@@ -12,5 +12,6 @@ Tasks:
 - How do I say "this" in another language
 - Recognize this song
 - Research this topic 
+- RapidAPI integration
 
 https://composio.dev/blog/gpt-4-function-calling-example/
