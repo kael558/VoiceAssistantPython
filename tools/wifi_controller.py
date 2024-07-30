@@ -3,11 +3,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+import time
+import os
 
+def toggle_wifi():
+    chrome_install = ChromeDriverManager().install()
+    folder = os.path.dirname(chrome_install)
+    chromedriver_path = os.path.join(folder, "chromedriver.exe")
 
-def toggleWifi():
-    # Setup ChromeDriver
-    service = Service(ChromeDriverManager().install())
+    service = Service(chromedriver_path)
     driver = webdriver.Chrome(service=service)
 
     # Navigate to Google
@@ -43,6 +47,7 @@ def toggleWifi():
     driver.implicitly_wait(10)
 
     # Close the browser after some time
-    import time
     time.sleep(5)  # Let the user actually see something!
     driver.quit()
+
+    return "The wifi has been toggled."
