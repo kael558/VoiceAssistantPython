@@ -7,14 +7,15 @@ import time
 import os
 
 def toggle_wifi():
-    chrome_install = ChromeDriverManager().install()
-    folder = os.path.dirname(chrome_install)
-    chromedriver_path = os.path.join(folder, "chromedriver.exe")
+    #chrome_install = ChromeDriverManager().install()
+    #folder = os.path.dirname(chrome_install)
+    #chromedriver_path = os.path.join(folder, "chromedriver.exe")
+    #service = Service(chromedriver_path)
+    s = Service('/usr/bin/chromedriver')
+    driver = webdriver.Chrome(service=s)
+    #driver = webdriver.Chrome(service=service)
 
-    service = Service(chromedriver_path)
-    driver = webdriver.Chrome(service=service)
-
-    # Navigate to Google
+    # Navigate to Wifi Router
     driver.get("http://192.168.2.1")
 
     # Wait for the page to load

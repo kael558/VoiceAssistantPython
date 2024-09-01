@@ -20,7 +20,8 @@ from pipecat.processors.aggregators.llm_response import (
     LLMUserContextAggregator,
 )
 from pipecat.serializers.twilio import TwilioFrameSerializer
-from pipecat.services.azure import AzureTTSService
+from pipecat.services.elevenlabs import ElevenLabsTTSService
+#from pipecat.services.azure import AzureTTSService
 from pipecat.services.deepgram import DeepgramSTTService
 from pipecat.services.openai import OpenAILLMContext, OpenAILLMService
 from pipecat.transports.network.fastapi_websocket import FastAPIWebsocketTransport, FastAPIWebsocketParams
@@ -45,8 +46,6 @@ client = Groq(
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_client = Client(account_sid, auth_token)
-
-
 
 def get_tools():
     return [
@@ -126,13 +125,19 @@ def choose_tools(message):
             "content": message
         }
     ]
+    
+    
+    tool_choice = "auto"
+    
+    if message.lower() == 'wifi':
+        tool_choice = {"type": "function", "function": {"name": "toggle_wifi"}}
 
     tools = get_tools()
     response = client.chat.completions.create(
         messages=messages,
-        model="llama3-groq-8b-8192-tool-use-preview",
+        model="llama3-groq-70b-8192-tool-use-preview",
         tools=tools,
-        tool_choice="auto",
+        tool_choice=tool_choice,
         max_tokens=4096
     )
 
@@ -173,21 +178,21 @@ async def run_bot(websocket_client, stream_sid):
             )
         )
 
-        tts = AzureTTSService(
+        '''tts = AzureTTSService(
             api_key=os.getenv("AZURE_SPEECH_API_KEY"),
             region=os.getenv("AZURE_REGION"),
-        )
+        )'''
         stt = DeepgramSTTService(api_key=os.getenv('DEEPGRAM_API_KEY'))
 
-        """tts = ElevenLabsTTSService(
+        tts = ElevenLabsTTSService(
                     aiohttp_session=session,
                     api_key=os.getenv("ELEVENLABS_API_KEY"),
                     voice_id=os.getenv("ELEVENLABS_VOICE_ID"),
                 )
-        """
+        
         llm = OpenAILLMService(
             api_key=os.getenv("GROQ_API_KEY"),
-            model="llama3-groq-8b-8192-tool-use-preview",
+            model="llama3-groq-70b-8192-tool-use-preview",
             base_url="https://api.groq.com/openai/v1"
         )
         llm.register_function(
@@ -203,8 +208,11 @@ async def run_bot(websocket_client, stream_sid):
         messages = [
             {
                 "role": "system",
-                "content": """You are a helpful LLM in a WebRTC call. Your output will be converted to audio so don't include special characters in your answers. 
-Respond to what the user said in a creative and helpful way. Use the tools to help you answer the user such as searching the web.""",
+                "content": """You are a helpful LLM named Lucy, in a WebRTC call. Your output will be converted to audio so don't include special characters in your answers. 
+Respond to what the user said in a creative and helpful way but you love to make witty/bad jokes. Use the tools to help you answer the user such as searching the web.
+
+You will always do what the user asks without hesitation but bring in your personality.
+""",
             },
         ]
 

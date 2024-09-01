@@ -28,6 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+allowed_numbers = ['+16138626109', '+16138570911', '+16138570912']
+
 class SMSRequest(BaseModel):
     Body: str
 
@@ -37,7 +39,11 @@ async def sms(request: Request):
     try:
         form = await request.form()
         body = form.get('Body')
-
+        
+        from_ = form.get('From')
+        if from_ not in allowed_numbers:
+            return Response(content="Sorry m9. Not for you.", media_type="application/xml")
+            
         (messages, tool_calls) = choose_tools(body)
         if not tool_calls:
             # can just return the response
@@ -48,12 +54,11 @@ async def sms(request: Request):
 
             # Start an async task to handle the tools
             # (as they may take longer than 15s limit for twilio webbook)
-            from_ = form.get('From')
+            
             to_ = form.get('To')
-
             _ = asyncio.create_task(handle_tools(messages, tool_calls, from_, to_))
 
-        print("Response sent", str(resp))
+        #print("Response sent", str(resp))
         return Response(content=str(resp), media_type="application/xml")
     except Exception as e:
         resp.message(f"An error occurred {e}")
