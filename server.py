@@ -42,7 +42,7 @@ async def sms(request: Request):
         
         from_ = form.get('From')
         if from_ not in allowed_numbers:
-            return Response(content="Sorry m9. Not for you.", media_type="application/xml")
+            raise HTTPException(status_code=403, details="Forbidden")
             
         (messages, tool_calls) = choose_tools(body)
         if not tool_calls:
@@ -67,8 +67,13 @@ async def sms(request: Request):
 
 @app.post('/start_call')
 async def start_call(request: Request):
-    print("POST TwiML")
+    try:
+        form = await request.form()
 
+        from_ = form.get('From')
+        if from_ not in allowed_numbers:
+            raise HTTPException(status_code=403, details="Forbidden")
+            
     host = request.headers['Host']
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>

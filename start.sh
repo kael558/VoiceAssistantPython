@@ -1,6 +1,6 @@
 #!/bin/bash
 
-nohup ngrok http --domain=robust-classic-trout.ngrok-free-app 8765 > ngrok.log 2>&1 &
+nohup ngrok http --domain=robust-classic-trout.ngrok-free.app 8765 > ngrok.log 2>&1 &
 
 sleep 5
 

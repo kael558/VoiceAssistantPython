@@ -3,52 +3,42 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
-import os
 
 def toggle_wifi():
-    #chrome_install = ChromeDriverManager().install()
-    #folder = os.path.dirname(chrome_install)
-    #chromedriver_path = os.path.join(folder, "chromedriver.exe")
-    #service = Service(chromedriver_path)
-    s = Service('/usr/bin/chromedriver')
+    #s = Service('/usr/bin/chromedriver')
+    s = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=s)
-    #driver = webdriver.Chrome(service=service)
 
-    # Navigate to Wifi Router
-    driver.get("http://192.168.2.1")
+    try:
+        # Navigate to Wifi Router
+        driver.get("http://192.168.2.1")
 
-    # Wait for the page to load
-    driver.implicitly_wait(20)
+        # Wait for the page to load and click on manageWifi
+        wait = WebDriverWait(driver, 20)
+        manage_wifi = wait.until(EC.element_to_be_clickable((By.ID, "manageWifi")))
+        manage_wifi.click()
 
-    # clcik on manageWifi id
-    manage_wifi = driver.find_element(By.ID, "manageWifi")
-    manage_wifi.click()
+        # Wait for the password field to be present and enter the pass
+        password = wait.until(EC.presence_of_element_located((By.ID, "password")))
+        password.send_keys("NQS142336000280")
+        password.send_keys(Keys.RETURN)
 
-    # Wait for 5 seconds
-    driver.implicitly_wait(5)
+        # Wait for the masterToggle to be clickable and toggle it
+        master_toggle = wait.until(EC.element_to_be_clickable((By.ID, "masterToggle")))
+        master_toggle.click()
 
-    # enter the pass in id password
-    password = driver.find_element(By.ID, "password")
-    password.send_keys("NQS142336000280")
-    password.send_keys(Keys.RETURN)
+        # Wait for formSave to be clickable and click it
+        form_save = wait.until(EC.element_to_be_clickable((By.ID, "formSave")))
+        form_save.click()
 
-    driver.implicitly_wait(5)
+        # Optionally wait for some time to ensure changes are applied
+        time.sleep(5)  # Let the user actually see something!
 
-    # Toggle masterToggle
-    master_toggle = driver.find_element(By.ID, "masterToggle")
-    master_toggle.click()
-
-    driver.implicitly_wait(5)
-
-    # Save by clicking formSave
-    form_save = driver.find_element(By.ID, "formSave")
-    form_save.click()
-
-    driver.implicitly_wait(10)
-
-    # Close the browser after some time
-    time.sleep(5)  # Let the user actually see something!
-    driver.quit()
+    finally:
+        # Ensure browser closes even if there is an error
+        driver.quit()
 
     return "The wifi has been toggled."
