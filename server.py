@@ -73,6 +73,8 @@ async def start_call(request: Request):
         from_ = form.get('From')
         if from_ not in allowed_numbers:
             raise HTTPException(status_code=403, details="Forbidden")
+    except:
+        raise HTTPException(status_code=403, details="Forbidden")
             
     host = request.headers['Host']
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>

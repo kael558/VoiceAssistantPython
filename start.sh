@@ -1,7 +1,10 @@
 #!/bin/bash
 
-nohup ngrok http --domain=robust-classic-trout.ngrok-free.app 8765 > ngrok.log 2>&1 &
+nohup ngrok http --domain=robust-classic-trout.ngrok-free.app 8765 > ~/Desktop/VoiceAssistantPython/ngrok.log 2>&1 &
+NGROK_PID=$!
+echo "ngrok started with PID $NGROK_PID"
 
 sleep 5
 
-python ~/Desktop/VoiceAssistantPython/server.py > server.log 2>&1 &
+source ~/Desktop/VoiceAssistantPython/venv/bin/activate
+python ~/Desktop/VoiceAssistantPython/server.py > ~/Desktop/VoiceAssistantPython/server.log 2>&1 &
