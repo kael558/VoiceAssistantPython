@@ -1,33 +1,14 @@
-import json
-import os
-from datetime import datetime
-from typing import Annotated
-import uvicorn
-from fastapi import FastAPI, WebSocket, Response, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.responses import HTMLResponse, PlainTextResponse, JSONResponse
-from fastapi.requests import Request
-from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client
-from bot import run_bot, handle_tools, choose_tools
 import asyncio
+import os
+import json
 from tools.wifi_controller import toggle_wifi
-from fastapi.responses import RedirectResponse
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for testing
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-allowed_numbers = ['+16138626109', '+16138570911', '+16138570912', '+16139834757']
-
-# --- Common functions for status files ---
 def write_status(status):
     try:
         data = {"wifi_toggle_status": status}
@@ -70,12 +51,6 @@ def write_names_status(data):
     with open("names_status.json", "w") as f:
         json.dump(data, f, indent=4)
 
-# --- Pydantic models for request bodies ---
-class SMSRequest(BaseModel):
-    Body: str
-    From: str
-    To: str
-
 class NameToggle(BaseModel):
     name: str
 
@@ -85,81 +60,7 @@ class AddName(BaseModel):
 class RemoveName(BaseModel):
     name: str
 
-# --- SMS related endpoints (from first server) ---
-async def handle_wifi_background_task():
-    write_status("toggling")
-    toggle_wifi()
-    write_status("idle")
-
-@app.post('/sms')
-async def sms(request: Request, background_tasks: BackgroundTasks):
-    resp = MessagingResponse()
-    try:
-        form = await request.form()
-        body = form.get('Body')
-        from_ = form.get('From')
-        to_ = form.get('To')
-
-        if from_ not in allowed_numbers:
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-        if body.lower().strip() == 'wifi':
-            current_status = read_status()
-            if current_status == "toggling": # Corrected from "toggling_started"
-                resp.message("It is already doing it.")
-                return Response(content=str(resp), media_type="application/xml")
-            resp.message('Toggling Wifi...')
-            background_tasks.add_task(handle_wifi_background_task)
-            return Response(content=str(resp), media_type="application/xml")
-
-        (messages, tool_calls) = choose_tools(body)
-        if not tool_calls:
-            resp.message(messages)
-        else:
-            tool_names = [tool_call.function.name for tool_call in tool_calls]
-            resp.message("Calling tools: " + ", ".join(tool_names))
-            background_tasks.add_task(handle_tools, messages, tool_calls, from_, to_)
-        return Response(content=str(resp), media_type="application/xml")
-    except HTTPException as he:
-        return Response(content=str(MessagingResponse().message(he.detail)), media_type="application/xml", status_code=he.status_code)
-    except Exception as e:
-        resp.message(f"An error occurred {e}")
-        return Response(content=str(resp), media_type="application/xml")
-
-@app.post('/start_call')
-async def start_call(request: Request):
-    try:
-        form = await request.form()
-        from_ = form.get('From')
-        if from_ not in allowed_numbers:
-            raise HTTPException(status_code=403, detail="Forbidden")
-    except Exception: # Catch any exception during form parsing/access
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
-    host = request.headers['Host']
-    xml = f"""
-    <Response>
-      <Connect>
-        <Stream url='wss://{host}/ws' />
-      </Connect>
-    </Response>
-    """
-    return HTMLResponse(content=xml, media_type="application/xml")
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    # Using async for for iter_text to properly handle the stream
-    async for message in websocket.iter_text():
-        start_data = json.loads(message)
-        if start_data.get('event') == 'start':
-            stream_sid = start_data['start']['streamSid']
-            print("WebSocket connection accepted")
-            await run_bot(websocket, stream_sid)
-            break # Exit the loop once start event is processed and bot is running
-
-# --- Web UI related endpoints (from second server) ---
-@app.get("/")
+@app.get("/web")
 async def web():
     html_content = """
     <!DOCTYPE html>
@@ -632,7 +533,8 @@ async def web():
           <div class="card">
             <h2>User Authorization</h2>
             <div id="namesContainer">
-              </div>
+              <!-- Names will be loaded here -->
+            </div>
             <div class="progress-bar">
               <div class="progress-fill" id="progressFill" style="width: 0%"></div>
             </div>
@@ -890,41 +792,41 @@ async def web():
     return HTMLResponse(content=html_content)
 
 @app.get("/wifi_status")
-async def get_wifi_status_endpoint():
+async def get_wifi_status():
     status = read_status()
     return JSONResponse({"wifi_toggle_status": status})
 
 @app.get("/names_status")
-async def get_names_status_endpoint():
+async def get_names_status():
     return JSONResponse(read_names_status())
 
 @app.post("/toggle_wifi")
-async def toggle_wifi_web_endpoint(background_tasks: BackgroundTasks):
+async def toggle_wifi_endpoint():
     try:
-        current_status = read_status()
-        if current_status == "toggling":
-            return PlainTextResponse("WiFi is already being toggled. Please wait.", status_code=409)
-
         write_status("toggling")
-        background_tasks.add_task(toggle_wifi) # Execute toggle_wifi in a background thread
         
-        # After starting the background task, the status will eventually change to "idle"
-        # The frontend will poll for this change.
-        return PlainTextResponse("WiFi neural network reconfiguration initiated.")
+        # Run toggle_wifi in background thread to avoid blocking
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, toggle_wifi)
+        
+        write_status("idle")
+        return PlainTextResponse("WiFi neural network successfully reconfigured.")
     except Exception as e:
-        write_status("idle") # Ensure status is reset even on immediate error
-        return PlainTextResponse(f"Error initiating WiFi toggle: {str(e)}", status_code=500)
+        write_status("idle")
+        return PlainTextResponse(f"Error: {str(e)}", status_code=500)
 
 @app.post("/toggle_name")
-async def toggle_name_endpoint(name_toggle: NameToggle, background_tasks: BackgroundTasks):
+async def toggle_name_endpoint(name_toggle: NameToggle):
     try:
         data = read_names_status()
         name = name_toggle.name
         
         if name in data["toggles"]:
+            # Toggle the name
             data["toggles"][name] = not data["toggles"][name]
             write_names_status(data)
             
+            # Check if all names are toggled
             all_toggled = all(data["toggles"].values()) and len(data["names"]) > 0
             
             if all_toggled:
@@ -933,13 +835,15 @@ async def toggle_name_endpoint(name_toggle: NameToggle, background_tasks: Backgr
                     data["toggles"][n] = False
                 write_names_status(data)
                 
-                # Trigger WiFi toggle in background
-                current_wifi_status = read_status()
-                if current_wifi_status != "toggling":
-                    write_status("toggling")
-                    background_tasks.add_task(toggle_wifi)
-                else:
-                    print("WiFi already toggling due to all names being authorized. Skipping another toggle.")
+                # Trigger WiFi toggle
+                write_status("toggling")
+                try:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, toggle_wifi)
+                    write_status("idle")
+                except Exception as e:
+                    write_status("idle")
+                    print(f"Error in WiFi toggle: {e}")
             
             return JSONResponse({"success": True, "all_toggled": all_toggled})
         
@@ -968,8 +872,7 @@ async def remove_name_endpoint(remove_name: RemoveName):
     
     if name in data["names"]:
         data["names"].remove(name)
-        if name in data["toggles"]: # Ensure the toggle state is also removed
-            del data["toggles"][name]
+        del data["toggles"][name]
         write_names_status(data)
         return JSONResponse({"success": True})
     
@@ -977,7 +880,7 @@ async def remove_name_endpoint(remove_name: RemoveName):
 
 @app.get("/server_log")
 async def server_log():
-    log_file = "server.log" # Assuming a log file named server.log
+    log_file = "server.log"
     if os.path.exists(log_file):
         with open(log_file, "r") as f:
             content = f.read()
@@ -986,4 +889,5 @@ async def server_log():
     return PlainTextResponse(content)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8765)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)

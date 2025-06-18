@@ -10,4 +10,3 @@ sleep 5
 
 source ~/Desktop/VoiceAssistantPython/venv/bin/activate
 python ~/Desktop/VoiceAssistantPython/server.py > ~/Desktop/VoiceAssistantPython/server.log 2>&1 & 
-python ~/Desktop/VoiceAssistantPython/internal_server.py > ~/Desktop/VoiceAssistantPython/webserver.log 2>&1 &
