@@ -159,7 +159,7 @@ async def websocket_endpoint(websocket: WebSocket):
             break # Exit the loop once start event is processed and bot is running
 
 # --- Web UI related endpoints (from second server) ---
-@app.get("/")
+@app.get("/web")
 async def web():
     html_content = """
     <!DOCTYPE html>
@@ -905,8 +905,7 @@ async def toggle_wifi_web_endpoint(background_tasks: BackgroundTasks):
         if current_status == "toggling":
             return PlainTextResponse("WiFi is already being toggled. Please wait.", status_code=409)
 
-        write_status("toggling")
-        background_tasks.add_task(toggle_wifi) # Execute toggle_wifi in a background thread
+        background_tasks.add_task(handle_wifi_background_task) # Execute toggle_wifi in a background thread
         
         # After starting the background task, the status will eventually change to "idle"
         # The frontend will poll for this change.
@@ -936,8 +935,7 @@ async def toggle_name_endpoint(name_toggle: NameToggle, background_tasks: Backgr
                 # Trigger WiFi toggle in background
                 current_wifi_status = read_status()
                 if current_wifi_status != "toggling":
-                    write_status("toggling")
-                    background_tasks.add_task(toggle_wifi)
+                    background_tasks.add_task(handle_wifi_background_task)
                 else:
                     print("WiFi already toggling due to all names being authorized. Skipping another toggle.")
             
