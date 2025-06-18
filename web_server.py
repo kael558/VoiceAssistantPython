@@ -575,7 +575,7 @@ async def web():
           } else {
             btn.disabled = false;
             btnText.textContent = 'Toggle WiFi';
-            status.textContent = 'Ready for activation'; // Restore status text when idle
+            status.textContent = ''; // Restore status text when idle
             status.className = 'status';
           }
         }

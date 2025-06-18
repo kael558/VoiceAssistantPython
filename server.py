@@ -51,7 +51,7 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
                 resp.message("It is already doing it.")
                 return Response(content=str(resp), media_type="application/xml")
             resp.message('Toggling Wifi...')
-            background_tasks.add_task(handle_wifi_background_task)
+            _ = asyncio.create_task(handle_wifi_background_task())  # Changed to asyncio.create_task
             return Response(content=str(resp), media_type="application/xml")
 
         (messages, tool_calls) = choose_tools(body)
@@ -60,7 +60,7 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
         else:
             tool_names = [tool_call.function.name for tool_call in tool_calls]
             resp.message("Calling tools: " + ", ".join(tool_names))
-            background_tasks.add_task(handle_tools, messages, tool_calls, from_, to_)
+            _ = asyncio.create_task(handle_tools(messages, tool_calls, from_, to_))
         return Response(content=str(resp), media_type="application/xml")
     except HTTPException as he:
         return Response(content=str(MessagingResponse().message(he.detail)), media_type="application/xml", status_code=he.status_code)
