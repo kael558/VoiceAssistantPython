@@ -15,7 +15,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from bot import run_bot, handle_tools, choose_tools
 import asyncio
-
+from tools.wifi_controller import toggle_wifi
 
 
 app = FastAPI()
@@ -28,10 +28,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-allowed_numbers = ['+16138626109', '+16138570911', '+16138570912']
+allowed_numbers = ['+16138626109', '+16138570911', '+16138570912', '+16139834757']
 
 class SMSRequest(BaseModel):
     Body: str
+
+def write_status(status):
+    data = {"wifi_toggle_status": status}
+    with open("wifi_status.json", "w") as f:
+        json.dump(data, f, indent=4)
+
+def read_status():
+    with open("wifi_status.json") as f:
+        data = json.load(f)
+    return data.get("wifi_toggle_status", "idle")
+
+async def handle_wifi():
+    write_status("toggling")
+    toggle_wifi()
+    write_status("idle")
+
 
 @app.post('/sms')
 async def sms(request: Request):
@@ -43,6 +59,15 @@ async def sms(request: Request):
         from_ = form.get('From')
         if from_ not in allowed_numbers:
             raise HTTPException(status_code=403, details="Forbidden")
+        if body.lower().strip() == 'wifi':
+	    current_status = read_status()
+    	    if current_status == "toggling_started":
+        	resp.message("It is already doing it.")
+        	return Response(content=str(resp), media_type="application/xml")
+
+	    resp.message('Toggling Wifi...')
+       	    _ = asyncio.create_task(handle_wifi())
+    	    return Response(content=str(resp), media_type="application/xml"
             
         (messages, tool_calls) = choose_tools(body)
         if not tool_calls:
@@ -101,4 +126,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
+    #toggle_wifi()
     uvicorn.run(app, host="0.0.0.0", port=8765)

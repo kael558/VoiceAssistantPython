@@ -78,7 +78,6 @@ def get_tools():
 
 async def handle_tools(messages, tool_calls, from_, to_):
     try:
-
         available_functions = {
             "search_bing": search_bing,
             "toggle_wifi": toggle_wifi
@@ -96,8 +95,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
         second_response = client.chat.completions.create(
             messages=messages,
-            model="mixtral-8x7b-32768",
-            max_tokens=4096
+            model="llama-3.3-70b-versatile"
         )
         twilio_client.messages.create(
             body=second_response.choices[0].message.content,
@@ -129,13 +127,13 @@ def choose_tools(message):
     
     tool_choice = "auto"
     
-    if message.lower() == 'wifi':
+    if message.lower().strip() == 'wifi':
         tool_choice = {"type": "function", "function": {"name": "toggle_wifi"}}
 
     tools = get_tools()
     response = client.chat.completions.create(
         messages=messages,
-        model="llama3-groq-70b-8192-tool-use-preview",
+        model="llama-3.3-70b-versatile",
         tools=tools,
         tool_choice=tool_choice,
         max_tokens=4096
@@ -192,7 +190,7 @@ async def run_bot(websocket_client, stream_sid):
         
         llm = OpenAILLMService(
             api_key=os.getenv("GROQ_API_KEY"),
-            model="llama3-groq-70b-8192-tool-use-preview",
+            model="llama-3.3-70b-versatile",
             base_url="https://api.groq.com/openai/v1"
         )
         llm.register_function(
