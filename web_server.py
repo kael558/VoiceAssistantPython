@@ -54,7 +54,7 @@ async def web():
         }
         
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family: -apple-system, BlinkMacMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           background: #f5f5f5;
           color: #333;
           line-height: 1.6;
@@ -536,13 +536,20 @@ async def web():
       <script>
         let wifiStatus = 'idle';
         let namesData = { names: [], toggles: {} };
-        
+        let pollIntervals = {};
+        const POLLING_INTERVAL = 10000; // 10 seconds
+
         async function loadWifiStatus() {
           try {
             const response = await fetch('/wifi_status');
             const data = await response.json();
             wifiStatus = data.wifi_toggle_status;
             updateWifiButton();
+            if (wifiStatus === 'toggling') {
+                stopPolling();
+            } else {
+                startPolling(); // Ensure polling restarts if it was stopped
+            }
           } catch (error) {
             console.error('Error loading WiFi status:', error);
             document.getElementById('status').textContent = 'Error loading WiFi status.';
@@ -571,12 +578,12 @@ async def web():
             btn.disabled = true;
             btnText.textContent = 'TOGGLING...';
             status.textContent = ''; // Clear status text below the button
-            status.className = 'status'; // Remove 'toggling' class if present
+            status.className = 'status toggling'; // Add 'toggling' class for visual feedback
           } else {
             btn.disabled = false;
             btnText.textContent = 'Toggle WiFi';
             status.textContent = ''; // Restore status text when idle
-            status.className = 'status';
+            status.className = 'status'; // Remove 'toggling' class if present
           }
         }
         
@@ -615,6 +622,7 @@ async def web():
           // Set button to toggling state immediately for better UX
           wifiStatus = 'toggling';
           updateWifiButton();
+          stopPolling(); // Stop polling when WiFi toggle is initiated
           
           try {
             const response = await fetch('/toggle_wifi', { 
@@ -641,7 +649,7 @@ async def web():
             document.getElementById('status').className = 'status toggling'; // Use toggling class for error visual
           } finally {
             // Always reload status and log to ensure consistency after an attempt
-            await loadWifiStatus();
+            await loadWifiStatus(); // This will trigger startPolling if status becomes idle
             await loadLog();
           }
         }
@@ -665,7 +673,7 @@ async def web():
             
             if (response.ok) {
               await loadNamesData();
-              await loadWifiStatus(); // Potentially toggle WiFi
+              await loadWifiStatus(); // Potentially toggle WiFi and manage polling
             } else {
               console.error('Toggle name failed:', response.status);
               await loadNamesData(); // Refresh to show current state
@@ -750,15 +758,27 @@ async def web():
             console.error('Error loading log:', error);
           }
         }
+
+        function startPolling() {
+            // Clear existing intervals to prevent duplicates
+            stopPolling(); 
+            pollIntervals.wifi = setInterval(loadWifiStatus, POLLING_INTERVAL);
+            pollIntervals.names = setInterval(loadNamesData, POLLING_INTERVAL);
+            pollIntervals.log = setInterval(loadLog, POLLING_INTERVAL);
+        }
+
+        function stopPolling() {
+            for (const key in pollIntervals) {
+                clearInterval(pollIntervals[key]);
+            }
+        }
         
         // Initialize
         async function initialize() {
-          await loadWifiStatus();
+          await loadWifiStatus(); // Initial load determines if polling should start
           await loadNamesData();
           await loadLog();
-          setInterval(loadWifiStatus, 1000); // Poll every 1 second for wifi status
-          setInterval(loadNamesData, 2000);  // Poll every 2 seconds for names data
-          setInterval(loadLog, 3000);     // Poll every 3 seconds for log
+          // Polling will be started by loadWifiStatus if not already toggling
         }
         
         initialize();
@@ -789,13 +809,14 @@ async def toggle_wifi_web_endpoint(background_tasks: BackgroundTasks):
         if current_status == "toggling":
             return PlainTextResponse("WiFi is already being toggled. Please wait.", status_code=409)
 
+        # Set status to toggling immediately before starting the background task
+        write_status("toggling") 
         background_tasks.add_task(handle_wifi_background_task)  # Execute toggle_wifi in a background thread
         
-        # After starting the background task, the status will eventually change to "idle"
-        # The frontend will poll for this change.
         return PlainTextResponse("WiFi neural network reconfiguration initiated.")
     except Exception as e:
         write_status("idle")  # Ensure status is reset even on immediate error
+        print(f"Error initiating WiFi toggle: {str(e)}") # Log the error on the server
         return PlainTextResponse(f"Error initiating WiFi toggle: {str(e)}", status_code=500)
 
 
