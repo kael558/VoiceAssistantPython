@@ -288,6 +288,7 @@ async def web():
           .main-grid {
             grid-template-columns: 1fr;
             gap: 20px;
+            margin-bottom: 20px;
           }
           
           .header {
@@ -505,7 +506,7 @@ async def web():
             <button class="wifi-button" id="wifiBtn" onclick="toggleWifi()">
               <span id="btnText">Toggle WiFi</span>
             </button>
-            <div class="status" id="status">Ready</div>
+            <div class="status" id="status"></div>
           </div>
           
           <div class="card">
@@ -544,6 +545,8 @@ async def web():
             updateWifiButton();
           } catch (error) {
             console.error('Error loading WiFi status:', error);
+            document.getElementById('status').textContent = 'Error loading WiFi status.';
+            document.getElementById('status').className = 'status toggling'; // Use toggling class for error visual
           }
         }
         
@@ -567,12 +570,12 @@ async def web():
           if (wifiStatus === 'toggling') {
             btn.disabled = true;
             btnText.textContent = 'TOGGLING...';
-            status.textContent = 'System is currently toggling WiFi...';
-            status.className = 'status toggling';
+            status.textContent = ''; // Clear status text below the button
+            status.className = 'status'; // Remove 'toggling' class if present
           } else {
             btn.disabled = false;
             btnText.textContent = 'Toggle WiFi';
-            status.textContent = 'Ready for activation';
+            status.textContent = 'Ready for activation'; // Restore status text when idle
             status.className = 'status';
           }
         }
@@ -609,15 +612,9 @@ async def web():
         async function toggleWifi() {
           if (wifiStatus === 'toggling') return;
           
-          // Fetch latest status before proceeding
-          await loadWifiStatus();
-          if (wifiStatus === 'toggling') {
-            console.log('WiFi already toggling, ignoring action');
-            return;
-          }
-          
-          const statusEl = document.getElementById('status');
-          statusEl.textContent = "Initializing WiFi toggle sequence...";
+          // Set button to toggling state immediately for better UX
+          wifiStatus = 'toggling';
+          updateWifiButton();
           
           try {
             const response = await fetch('/toggle_wifi', { 
@@ -628,17 +625,24 @@ async def web():
             });
             
             if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
+              const errorText = await response.text();
+              throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
             }
             
-            const text = await response.text();
-            statusEl.textContent = text;
-            await loadWifiStatus();
+            // Wait for the background task to potentially change status
+            // The polling interval will eventually pick up the new status
             await loadLog();
           } catch (error) {
             console.error('WiFi toggle error:', error);
-            statusEl.textContent = `Error: ${error.message}`;
+            // Revert status and button state on error
+            wifiStatus = 'idle'; // Or 'error' if you want a specific error state
+            updateWifiButton();
+            document.getElementById('status').textContent = `Error: ${error.message}`;
+            document.getElementById('status').className = 'status toggling'; // Use toggling class for error visual
+          } finally {
+            // Always reload status and log to ensure consistency after an attempt
             await loadWifiStatus();
+            await loadLog();
           }
         }
         
@@ -661,7 +665,7 @@ async def web():
             
             if (response.ok) {
               await loadNamesData();
-              await loadWifiStatus();
+              await loadWifiStatus(); // Potentially toggle WiFi
             } else {
               console.error('Toggle name failed:', response.status);
               await loadNamesData(); // Refresh to show current state
@@ -752,6 +756,9 @@ async def web():
           await loadWifiStatus();
           await loadNamesData();
           await loadLog();
+          setInterval(loadWifiStatus, 1000); // Poll every 1 second for wifi status
+          setInterval(loadNamesData, 2000);  // Poll every 2 seconds for names data
+          setInterval(loadLog, 3000);     // Poll every 3 seconds for log
         }
         
         initialize();
