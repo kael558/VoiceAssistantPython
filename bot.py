@@ -30,6 +30,7 @@ from twilio.rest import Client
 
 from tools.web_search import search_bing
 from tools.wifi_controller import toggle_wifi
+from tools.bus_router import get_bus_route
 
 from groq import Groq
 
@@ -49,9 +50,9 @@ twilio_client = Client(account_sid, auth_token)
 
 def get_tools():
     return [
-        ChatCompletionToolParam(
-            type="function",
-            function={
+        {
+            "type": "function",
+            "function": {
                 "name": "search_bing",
                 "description": "Search the web. Use this to search up real-time information, current events or weather updates (basically anything that requires latest information).",
                 "parameters": {
@@ -62,25 +63,54 @@ def get_tools():
                             "description": "The search query",
                         },
                     },
-                    "required": [
-                        "query"],
+                    "required": ["query"],
                 },
             }
-        ),
-        ChatCompletionToolParam(
-            type="function",
-            function={
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "toggle_wifi",
                 "description": "Toggle the WiFi",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                },
             }
-        )
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_bus_route",
+                "description": "Find the best public transit route (bus/train/metro) between two locations. Uses Google Maps and optional real-time vehicle positions to recommend the fastest route and when to leave.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "origin": {
+                            "type": "string",
+                            "description": "Starting location (address or 'lat,lng')."
+                        },
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination location (address or 'lat,lng')."
+                        },
+                        "gtfs_feed_url": {
+                            "type": "string",
+                            "description": "Optional GTFS Realtime vehicle-positions feed URL. If omitted, only Google Maps schedule data is used."
+                        }
+                    },
+                    "required": ["origin", "destination"],
+                },
+            }
+        },
     ]
 
 async def handle_tools(messages, tool_calls, from_, to_):
     try:
         available_functions = {
             "search_bing": search_bing,
-            "toggle_wifi": toggle_wifi
+            "toggle_wifi": toggle_wifi,
+            "get_bus_route": get_bus_route,
         }
 
         for tool_call in tool_calls:
@@ -116,7 +146,7 @@ def choose_tools(message):
     messages = [
         {
             "role": "system",
-            "content": "you are an assistant responding to a SMS message. Use the tools if the user asks for them. ",
+            "content": "You are an assistant responding to an SMS message. When you need to search for information or use a tool, call the appropriate function. Do not wrap function calls in any tags or special formatting.",
         },
         {
             "role": "user",
@@ -133,10 +163,10 @@ def choose_tools(message):
     tools = get_tools()
     response = client.chat.completions.create(
         messages=messages,
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         tools=tools,
         tool_choice=tool_choice,
-        max_tokens=4096
+ 
     )
 
     response_message = response.choices[0].message
@@ -160,6 +190,54 @@ async def search(llm, args):
     except Exception as e:
         logger.error(f"Error: {e}")
         return "Failed to retrieve search results"
+
+
+def simplify_for_voice(text: str) -> str:
+    """
+    Simplify rich-text route output for voice reading.
+    Removes emojis and heavy formatting so TTS sounds natural.
+    """
+    emojis_to_remove = ["🚌", "📍", "⏱️", "📊", "✅", "🔴", "⬜", "🗺️"]
+    for emoji in emojis_to_remove:
+        text = text.replace(emoji, "")
+
+    # Remove heavy separators and repeated punctuation
+    for ch in ["=", "-", "_"]:
+        text = text.replace(ch * 2, " ")
+
+    # Make symbols more voice-friendly
+    text = text.replace("~", " approximately ")
+
+    # Collapse excessive whitespace
+    return " ".join(text.split())
+
+
+async def start_bus_routing(llm):
+    await llm.push_frame(
+        TextFrame("Let me find the best transit route for you. One moment.")
+    )
+
+
+async def get_bus_route_async(llm, args):
+    """
+    Async wrapper for get_bus_route so it can be used as a Pipecat tool.
+    """
+    try:
+        gtfs_feed_url = args.get("gtfs_feed_url") or os.getenv("GTFS_FEED_URL")
+
+        result = get_bus_route(
+            origin=args["origin"],
+            destination=args["destination"],
+            gtfs_feed_url=gtfs_feed_url,
+        )
+
+        return simplify_for_voice(result)
+    except Exception as e:
+        logger.error(f"Error getting bus route: {e}")
+        return (
+            "Sorry, I couldn't find a good transit route right now. "
+            "Please try again in a moment."
+        )
 
 
 async def run_bot(websocket_client, stream_sid):
@@ -197,6 +275,11 @@ async def run_bot(websocket_client, stream_sid):
             "search_bing",
             search,
             start_callback=start_search)
+        llm.register_function(
+            "get_bus_route",
+            get_bus_route_async,
+            start_callback=start_bus_routing,
+        )
 
         tools = get_tools()
 

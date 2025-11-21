@@ -48,7 +48,7 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
         if body.lower().strip() == 'wifi':
             current_status = read_status()
             if current_status == "toggling":
-                resp.message("It is already doing it.")
+                resp.message("The WiFi is already being toggled.")
                 return Response(content=str(resp), media_type="application/xml")
             resp.message('Toggling Wifi...')
             _ = asyncio.create_task(handle_wifi_background_task())  # Changed to asyncio.create_task
@@ -67,6 +67,18 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         resp.message(f"An error occurred {e}")
         return Response(content=str(resp), media_type="application/xml")
+
+
+body = "Whats the weather in Ottawa?"
+messages, tool_calls = choose_tools(body)
+if not tool_calls:
+    print(messages)
+else:
+    tool_names = [tool_call.function.name for tool_call in tool_calls]
+    print("Calling tools: " + ", ".join(tool_names))
+    _ = asyncio.create_task(handle_tools(messages, tool_calls, "+16138626109", "+16137022614"))
+
+
 
 @app.post('/start_call')
 async def start_call(request: Request):
@@ -104,4 +116,4 @@ if __name__ == "__main__":
     # Ensure initial status files exist
     write_status(read_status())
     print("Starting Main Server (SMS/WebSocket) on port 8765...")
-    uvicorn.run(app, host="0.0.0.0", port=8765)
+    #uvicorn.run(app, host="0.0.0.0", port=8765)
