@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, List
 import uvicorn
 from fastapi import FastAPI, WebSocket, Response, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +13,7 @@ from twilio.rest import Client
 from bot import run_bot, handle_tools, choose_tools
 import asyncio
 from common import write_status, read_status, handle_wifi_background_task
+from json import JSONDecodeError
 
 app = FastAPI()
 
@@ -24,7 +25,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-allowed_numbers = ['+16138626109', '+16138570911', '+16138570912', '+16139834757']
+ALLOWED_NUMBERS_FILE = os.path.join(os.path.dirname(__file__), "allowed_numbers.json")
+
+
+def load_allowed_numbers() -> List[str]:
+    """Load the list of allowed numbers from the JSON file, seeding with defaults if needed."""
+    default_numbers = ['+16138626109', '+16138570911', '+16138570912', '+16139834757', '+16138798396']
+    try:
+        with open(ALLOWED_NUMBERS_FILE, "r") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            numbers = data.get("allowed_numbers", default_numbers)
+        elif isinstance(data, list):
+            numbers = data
+        else:
+            numbers = default_numbers
+    except FileNotFoundError:
+        numbers = default_numbers
+        save_allowed_numbers(numbers)
+    except JSONDecodeError:
+        numbers = default_numbers
+        save_allowed_numbers(numbers)
+    except Exception as e:
+        print(f"Error reading allowed numbers from {ALLOWED_NUMBERS_FILE}: {e}")
+        numbers = default_numbers
+    return numbers
+
+
+def save_allowed_numbers(numbers: List[str]) -> None:
+    """Persist the list of allowed numbers to the JSON file."""
+    try:
+        data = {"allowed_numbers": sorted(set(numbers))}
+        with open(ALLOWED_NUMBERS_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"Error writing allowed numbers to {ALLOWED_NUMBERS_FILE}: {e}")
 
 # --- Pydantic models for request bodies ---
 class SMSRequest(BaseModel):
@@ -42,8 +77,23 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
         from_ = form.get('From')
         to_ = form.get('To')
 
+        allowed_numbers = load_allowed_numbers()
+
         if from_ not in allowed_numbers:
             raise HTTPException(status_code=403, detail="Forbidden")
+
+        # Handle adding a new allowed number via SMS: "add <number>"
+        if body:
+            parts = body.strip().split()
+            if len(parts) == 2 and parts[0].lower() == 'add':
+                new_number = parts[1]
+                if new_number in allowed_numbers:
+                    resp.message(f"{new_number} is already in the allowed numbers list.")
+                else:
+                    allowed_numbers.append(new_number)
+                    save_allowed_numbers(allowed_numbers)
+                    resp.message(f"Added {new_number} to the allowed numbers list.")
+                return Response(content=str(resp), media_type="application/xml")
 
         if body.lower().strip() == 'wifi':
             current_status = read_status()
