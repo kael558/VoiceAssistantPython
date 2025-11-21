@@ -9,20 +9,27 @@ from enum import Enum
 # Load environment variables
 load_dotenv()
 
-# Add your Bing Search V7 subscription key and endpoint to your environment variables.
-subscription_key = os.getenv("AZURE_BING_API_KEY")
-endpoint = "https://api.bing.microsoft.com/v7.0/search"
+# Add your Serper API key to your environment variables
+api_key = os.getenv("SERPER_API_KEY")
+endpoint = "https://google.serper.dev/search"
 
 
 def search_bing(query):
-    # Construct a request
-    mkt = 'en-US'
-    params = {'q': query, 'mkt': mkt}
-    headers = {'Ocp-Apim-Subscription-Key': subscription_key}
+    """Search using Serper API (formerly Bing Search)"""
+    # Construct headers
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
+    
+    # Construct request body
+    payload = json.dumps({
+        "q": query
+    })
 
     # Call the API
     try:
-        response = requests.get(endpoint, headers=headers, params=params)
+        response = requests.post(endpoint, headers=headers, data=payload)
         response.raise_for_status()
 
         return handle_search_response(response.json())
@@ -34,16 +41,16 @@ def search_bing(query):
 
 def handle_search_response(response):
     web_descs = []
-    for value in response.get('webPages', {}).get('value', []):
+    
+    # Serper returns organic results in 'organic' field
+    for result in response.get('organic', []):
         news = {
-            'url': value['url'],
-            'title': value['name'],
-            'author': value['displayUrl'],
-            'image': value.get('thumbnailUrl'),
-            'desc': value['snippet']
+            'url': result.get('link'),
+            'title': result.get('title'),
+            'author': result.get('link'),
+            'desc': result.get('snippet')
         }
-        web_descs.append(value['snippet'])
-        #print(news)  # Simulate sending a message
+        web_descs.append(result.get('snippet', ''))
 
     web_desc_str = "WebPage Snippet:" + "\nWebPage Snippet: ".join(web_descs[:5])
     return web_desc_str
@@ -97,7 +104,7 @@ def handle_news_response(response):
 
 
 if __name__ == "__main__":
-    query = "Microsoft Cognitive Services"
+    query = "apple inc"
 
     response = search_bing(query)
     print(response)

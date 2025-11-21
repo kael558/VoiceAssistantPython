@@ -65,7 +65,7 @@ def get_tools():
                     },
                     "required": ["query"],
                 },
-            }
+            },
         },
         {
             "type": "function",
@@ -76,7 +76,7 @@ def get_tools():
                     "type": "object",
                     "properties": {},
                 },
-            }
+            },
         },
         {
             "type": "function",
@@ -88,22 +88,50 @@ def get_tools():
                     "properties": {
                         "origin": {
                             "type": "string",
-                            "description": "Starting location (address or 'lat,lng')."
+                            "description": "Starting location (address or 'lat,lng').",
                         },
                         "destination": {
                             "type": "string",
-                            "description": "Destination location (address or 'lat,lng')."
+                            "description": "Destination location (address or 'lat,lng').",
                         },
                         "gtfs_feed_url": {
                             "type": "string",
-                            "description": "Optional GTFS Realtime vehicle-positions feed URL. If omitted, only Google Maps schedule data is used."
-                        }
+                            "description": "Optional GTFS Realtime vehicle-positions feed URL. If omitted, only Google Maps schedule data is used.",
+                        },
                     },
                     "required": ["origin", "destination"],
                 },
-            }
+            },
         },
     ]
+
+
+def parse_failed_tool_call(error_str: str):
+    """
+    Extract function name and args from Groq's failed_generation.
+    Example: '<function=search_bing{"query": "Ottawa weather"}</function>'
+    Returns (function_name, args_dict) or (None, None)
+    """
+    try:
+        # Extract the failed_generation from error string
+        if "'failed_generation':" in error_str:
+            start = error_str.find("'failed_generation': '") + len("'failed_generation': '")
+            end = error_str.find("'}", start)
+            failed_gen = error_str[start:end]
+        else:
+            return None, None
+        
+        # Parse: <function=NAME{...}</function>
+        if not failed_gen.startswith("<function="):
+            return None, None
+            
+        func_name = failed_gen.split("{")[0].replace("<function=", "")
+        json_str = "{" + failed_gen.split("{", 1)[1].replace("</function>", "")
+        args = json.loads(json_str)
+        
+        return func_name, args
+    except Exception:
+        return None, None
 
 async def handle_tools(messages, tool_calls, from_, to_):
     try:
@@ -146,7 +174,11 @@ def choose_tools(message):
     messages = [
         {
             "role": "system",
-            "content": "You are an assistant responding to an SMS message. When you need to search for information or use a tool, call the appropriate function. Do not wrap function calls in any tags or special formatting.",
+            "content": (
+                "You are an assistant responding to an SMS message. When you need to "
+                "search for information or use a tool, call the appropriate function. "
+                "Do not wrap function calls in any tags or special formatting."
+            ),
         },
         {
             "role": "user",
@@ -156,20 +188,41 @@ def choose_tools(message):
     
 
     tools = get_tools()
-    response = client.chat.completions.create(
-        messages=messages,
-        model="llama-3.3-70b-versatile",
-        tools=tools,
-    )
 
-    response_message = response.choices[0].message
-    tool_calls = response_message.tool_calls
 
-    if tool_calls:
-        messages.append(response_message)
-        return messages, tool_calls
-
-    return response_message.content, None
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            tools=tools,
+            disable_tool_validation=True,
+        )
+        
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+        
+        if tool_calls:
+            messages.append(response_message)
+            return messages, tool_calls
+            
+        return response_message.content, None
+        
+    except Exception as e:
+        # If Groq fails, try to parse and execute the tool directly
+        if hasattr(e, "status_code") and e.status_code == 400:
+            func_name, func_args = parse_failed_tool_call(str(e))
+            if func_name and func_args:
+                available_functions = {
+                    "search_bing": search_bing,
+                    "toggle_wifi": toggle_wifi,
+                    "get_bus_route": get_bus_route,
+                }
+                fn = available_functions.get(func_name)
+                if fn:
+                    result = fn(**func_args)
+                    return str(result), None
+        
+        return "Tool call failed. Please try again.", None
 
 
 
