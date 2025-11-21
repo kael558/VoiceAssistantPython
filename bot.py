@@ -221,7 +221,7 @@ def choose_tools(message):
                 if fn:
                     result = fn(**func_args)
                     return str(result), None
-        
+        print(e)
         return "Tool call failed. Please try again.", None
 
 
