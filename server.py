@@ -119,14 +119,6 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
         return Response(content=str(resp), media_type="application/xml")
 
 
-body = "Whats the weather in Ottawa?"
-messages, tool_calls = choose_tools(body)
-if not tool_calls:
-    print(messages)
-else:
-    tool_names = [tool_call.function.name for tool_call in tool_calls]
-    print("Calling tools: " + ", ".join(tool_names))
-    _ = asyncio.create_task(handle_tools(messages, tool_calls, "+16138626109", "+16137022614"))
 
 
 
