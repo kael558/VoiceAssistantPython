@@ -154,19 +154,12 @@ def choose_tools(message):
         }
     ]
     
-    
-    tool_choice = "auto"
-    
-    if message.lower().strip() == 'wifi':
-        tool_choice = {"type": "function", "function": {"name": "toggle_wifi"}}
 
     tools = get_tools()
     response = client.chat.completions.create(
         messages=messages,
-        model="openai/gpt-oss-120b",
+        model="llama-3.3-70b-versatile",
         tools=tools,
-        tool_choice=tool_choice,
- 
     )
 
     response_message = response.choices[0].message
