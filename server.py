@@ -10,7 +10,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from fastapi.requests import Request
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
-from bot import run_bot, handle_tools, choose_tools
+from bot import run_bot, handle_tools, choose_tools, format_tool_calls_for_sms
 import asyncio
 from common import write_status, read_status, handle_wifi_background_task, load_allowed_numbers, save_allowed_numbers
 from json import JSONDecodeError
@@ -72,8 +72,11 @@ async def sms(request: Request, background_tasks: BackgroundTasks):
         if not tool_calls:
             resp.message(messages)
         else:
-            tool_names = [tool_call.function.name for tool_call in tool_calls]
-            resp.message("Calling tools: " + ", ".join(tool_names))
+            # Send a nicely formatted summary of the tools being called,
+            # including key parameters, so the user can see exactly
+            # what is happening.
+            summary_text = format_tool_calls_for_sms(tool_calls)
+            resp.message(summary_text)
             _ = asyncio.create_task(handle_tools(messages, tool_calls, from_, to_))
         return Response(content=str(resp), media_type="application/xml")
     except HTTPException as he:

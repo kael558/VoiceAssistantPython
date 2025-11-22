@@ -77,6 +77,75 @@ def chunk_message(text: str, max_len: int = 1600) -> list[str]:
 
     return [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
+
+def format_tool_calls_for_sms(tool_calls) -> str:
+    """
+    Create a concise, SMS-friendly summary of the tools being called
+    and their parameters.
+    """
+    if not tool_calls:
+        return "Calling tools..."
+
+    lines: list[str] = []
+    lines.append("[Calling tools]")
+    lines.append("")  # blank line for readability
+
+    for tool_call in tool_calls:
+        name = getattr(getattr(tool_call, "function", None), "name", None) or "unknown_tool"
+        raw_args = getattr(getattr(tool_call, "function", None), "arguments", "{}") or "{}"
+
+        try:
+            args = json.loads(raw_args)
+        except Exception:
+            args = {}
+
+        # Tool name header
+        lines.append(name)
+
+        # Pretty-print important arguments per tool
+        if name == "get_transit_route":
+            origin = args.get("origin")
+            destination = args.get("destination")
+            arrive_by = args.get("arrive_by")
+
+            if origin:
+                lines.append(f"- Origin: {origin}")
+            if destination:
+                lines.append(f"- Destination: {destination}")
+            if arrive_by:
+                lines.append(f"- Arrive by: {arrive_by}")
+
+        elif name == "search_bing":
+            query = args.get("query")
+            if query:
+                lines.append(f"- Query: {query}")
+
+        elif name == "set_location":
+            address = args.get("address")
+            if address:
+                lines.append(f"- Address: {address}")
+
+        elif name == "toggle_wifi":
+            lines.append("- No parameters")
+
+        else:
+            # Generic fallback: list key/value pairs
+            for key, value in args.items():
+                lines.append(f"- {key}: {value}")
+
+        # Spacer line between tools
+        lines.append("")
+
+    # Trim any trailing blank lines
+    while lines and lines[-1] == "":
+        lines.pop()
+
+    # Add a simple footer
+    lines.append("")
+    lines.append("------")
+
+    return "\n".join(lines)
+
 def get_tools():
 
     return [
