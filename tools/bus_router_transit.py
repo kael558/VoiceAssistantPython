@@ -770,9 +770,9 @@ if __name__ == "__main__":
     
     # Test with basic transit route
     result = get_transit_route(
-        "3371 chilliwack way, Ottawa",
-        "Bayview Yards, Ottawa",
-        num_results=2
+        "3371 Chilliwack Way, Ottawa, ON",
+        "Bayview Yards, Ottawa, ON",
+ 
     )
     print(result)
     

@@ -84,13 +84,17 @@ def format_tool_calls_for_sms(tool_calls) -> str:
     and their parameters.
     """
     if not tool_calls:
-        return "Calling tools..."
+        return "Working on your request… (running tools)"
 
     lines: list[str] = []
-    lines.append("[Calling tools]")
-    lines.append("")  # blank line for readability
+    total = len(tool_calls)
+    header = f"Tools running ({total})" if total > 1 else "Tool running"
 
-    for tool_call in tool_calls:
+    # Visual header
+    lines.append(f"=== {header} ===")
+
+
+    for idx, tool_call in enumerate(tool_calls, start=1):
         name = getattr(getattr(tool_call, "function", None), "name", None) or "unknown_tool"
         raw_args = getattr(getattr(tool_call, "function", None), "arguments", "{}") or "{}"
 
@@ -99,39 +103,45 @@ def format_tool_calls_for_sms(tool_calls) -> str:
         except Exception:
             args = {}
 
-        # Tool name header
-        lines.append(name)
+        # Tool name header with index
+        lines.append(f"{idx}. {name}")
 
-        # Pretty-print important arguments per tool
+        # Collect pretty-printed argument lines for this tool
+        detail_lines: list[str] = []
+
         if name == "get_transit_route":
             origin = args.get("origin")
             destination = args.get("destination")
             arrive_by = args.get("arrive_by")
 
             if origin:
-                lines.append(f"- Origin: {origin}")
+                detail_lines.append(f"Origin: {origin}")
             if destination:
-                lines.append(f"- Destination: {destination}")
+                detail_lines.append(f"Destination: {destination}")
             if arrive_by:
-                lines.append(f"- Arrive by: {arrive_by}")
+                detail_lines.append(f"Arrive by: {arrive_by}")
 
         elif name == "search_bing":
             query = args.get("query")
             if query:
-                lines.append(f"- Query: {query}")
+                detail_lines.append(f"Query: {query}")
 
         elif name == "set_location":
             address = args.get("address")
             if address:
-                lines.append(f"- Address: {address}")
+                detail_lines.append(f"Address: {address}")
 
         elif name == "toggle_wifi":
-            lines.append("- No parameters")
+            detail_lines.append("No parameters")
 
         else:
             # Generic fallback: list key/value pairs
             for key, value in args.items():
-                lines.append(f"- {key}: {value}")
+                detail_lines.append(f"{key}: {value}")
+
+        # Add the detail lines with a bullet and indentation
+        for detail in detail_lines:
+            lines.append(f"   • {detail}")
 
         # Spacer line between tools
         lines.append("")
@@ -142,7 +152,7 @@ def format_tool_calls_for_sms(tool_calls) -> str:
 
     # Add a simple footer
     lines.append("")
-    lines.append("------")
+    lines.append("====================")
 
     return "\n".join(lines)
 
@@ -275,6 +285,8 @@ async def handle_tools(messages, tool_calls, from_, to_):
             function_to_call = available_functions.get(function_name, None)
             if function_to_call:
                 function_args = json.loads(tool_call.function.arguments)
+                print(function_name)
+                print(function_args)
                 function_response = function_to_call(**function_args)
                 messages.append(
                     {
@@ -284,6 +296,8 @@ async def handle_tools(messages, tool_calls, from_, to_):
                         "name": function_name,
                     }
                 )
+                print(function_response)
+                print("--------------------------------")
 
         # Ask the model to act purely as a summarizer for SMS.
         # Use different instructions depending on which tool(s) were called.
@@ -500,7 +514,6 @@ async def get_transit_route_async(llm, args):
         result = get_transit_route(
             origin=args["origin"],
             destination=args["destination"],
-            gtfs_feed_url=gtfs_feed_url,
             arrive_by=args.get("arrive_by"),
         )
 
