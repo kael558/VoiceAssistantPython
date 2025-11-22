@@ -297,10 +297,10 @@ async def handle_tools(messages, tool_calls, from_, to_):
                     }
                 )
     
-
+        print(used_tools)
         # Ask the model to act purely as a summarizer for SMS.
         # Use different instructions depending on which tool(s) were called.
-        if "get_transit_route" in used_tools and used_tools == {"get_transit_route"}:
+        if "get_transit_route" in used_tools:
             # Transit-specific, SMS directions in a fixed simple, newline-separated template.
             messages.append(
                 {
@@ -313,7 +313,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
                     ),
                 }
             )
-        elif "search_bing" in used_tools and used_tools == {"search_bing"}:
+        elif "search_bing" in used_tools:
             # Web search -> short natural-language answer.
             messages.append(
                 {
@@ -325,8 +325,9 @@ async def handle_tools(messages, tool_calls, from_, to_):
                         "- Focus on the single most relevant answer; ignore less important snippets.\n"
                         "- Do NOT include raw snippets, labels like 'WebPage Snippet' or 'Search results', or any URLs.\n"
                         "- Do NOT mention tools, searching, snippets, or sources.\n"
-                        "- Do NOT use bullet points, markdown, or formatting characters.\n"
+                        "- Do NOT use markdown, or formatting characters.\n"
                         "- Keep the answer short and to the point (1–3 sentences)."
+                        "- Answer the user's original question directly in natural, conversational language.\n"
                     ),
                 }
             )
@@ -340,7 +341,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
                         "- Summarize the results in natural, conversational language.\n"
                         "- Do NOT include raw snippets, labels, or URLs.\n"
                         "- Do NOT mention tools, searching, snippets, or sources.\n"
-                        "- Do NOT use bullet points, markdown, or formatting characters.\n"
+                        "- Do NOT use markdown, or formatting characters.\n"
                         "- Keep the answer short and to the point (1–4 sentences)."
                     ),
                 }
