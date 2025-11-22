@@ -279,6 +279,8 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
         used_tools = set()
 
+        print(tool_calls)
+
         for tool_call in tool_calls:
             function_name = tool_call.function.name
             used_tools.add(function_name)
