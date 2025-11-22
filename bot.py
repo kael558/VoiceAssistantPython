@@ -78,7 +78,7 @@ def chunk_message(text: str, max_len: int = 1600) -> list[str]:
     return [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
 def get_tools():
-    location_address = read_location()
+
     return [
         {
             "type": "function",
@@ -303,7 +303,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
 def choose_tools(message):
     location_address = read_location()
-    location_address_str = location_address['address'] if location_address else "unknown"
+    location_address_str = location_address['location'] if location_address else "unknown"
     messages = [
         {
             "role": "system",
