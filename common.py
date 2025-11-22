@@ -117,26 +117,21 @@ def read_location():
     """
     Read the user's default location from location.json.
 
-    Returns a dict like {"address": "...", "updated_at": "..."} or {} if unavailable.
+    Returns a string like "..." or "Unknown" if unavailable.
     """
     try:
         with open(LOCATION_FILE, "r") as f:
             data = json.load(f)
-        # Normalize to at least have 'address' key if it's a plain string
-        if isinstance(data, str):
-            return {"address": data}
-        if isinstance(data, dict):
-            return data
-        return {}
+        return data.get("location", "Unknown")
     except FileNotFoundError:
         # No location set yet
-        return {}
+        return "Unknown"
     except json.JSONDecodeError as e:
         print(f"JSON decode error in {LOCATION_FILE}: {e}")
-        return {}
+        return "Unknown"
     except Exception as e:
         print(f"Error reading location from {LOCATION_FILE}: {e}")
-        return {}
+        return "Unknown"
 
 
 async def handle_wifi_background_task():

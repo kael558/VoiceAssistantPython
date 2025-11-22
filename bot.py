@@ -303,7 +303,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
 def choose_tools(message):
     location_address = read_location()
-    location_address_str = location_address['location'] if location_address else "unknown"
+
     messages = [
         {
             "role": "system",
@@ -311,7 +311,7 @@ def choose_tools(message):
                 "You are an assistant responding to an SMS message. When you need to "
                 "search for information or use a tool, call the appropriate function. "
                 "Do not wrap function calls in any tags or special formatting."
-                f"The user's home address is: {location_address_str}. Use parts of the address in the tool parameters when appropriate. For example, if the user says 'how do I get to this <address>?' then the origin should be the user's home address and the destination should be the <address>."
+                f"The user's home address is: {location_address}. Use parts of the address in the tool parameters when appropriate. For example, if the user says 'how do I get to this <address>?' then the origin should be the user's home address and the destination should be the <address>."
                 "Same for search that relates to locality as well. If the user says 'whats the weather weather now', the query should be 'weather in <city address>'."
             ),
         },
@@ -320,6 +320,8 @@ def choose_tools(message):
             "content": message
         }
     ]
+
+    print(location_address)
     
 
     tools = get_tools()
