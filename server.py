@@ -12,7 +12,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from bot import run_bot, handle_tools, choose_tools
 import asyncio
-from common import write_status, read_status, handle_wifi_background_task
+from common import write_status, read_status, handle_wifi_background_task, load_allowed_numbers, save_allowed_numbers
 from json import JSONDecodeError
 
 app = FastAPI()
@@ -24,42 +24,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-ALLOWED_NUMBERS_FILE = os.path.join(os.path.dirname(__file__), "allowed_numbers.json")
-
-
-def load_allowed_numbers() -> List[str]:
-    """Load the list of allowed numbers from the JSON file, seeding with defaults if needed."""
-    default_numbers = ['+16138626109', '+16138570911', '+16138570912', '+16139834757', '+16138798396']
-    try:
-        with open(ALLOWED_NUMBERS_FILE, "r") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            numbers = data.get("allowed_numbers", default_numbers)
-        elif isinstance(data, list):
-            numbers = data
-        else:
-            numbers = default_numbers
-    except FileNotFoundError:
-        numbers = default_numbers
-        save_allowed_numbers(numbers)
-    except JSONDecodeError:
-        numbers = default_numbers
-        save_allowed_numbers(numbers)
-    except Exception as e:
-        print(f"Error reading allowed numbers from {ALLOWED_NUMBERS_FILE}: {e}")
-        numbers = default_numbers
-    return numbers
-
-
-def save_allowed_numbers(numbers: List[str]) -> None:
-    """Persist the list of allowed numbers to the JSON file."""
-    try:
-        data = {"allowed_numbers": sorted(set(numbers))}
-        with open(ALLOWED_NUMBERS_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print(f"Error writing allowed numbers to {ALLOWED_NUMBERS_FILE}: {e}")
 
 # --- Pydantic models for request bodies ---
 class SMSRequest(BaseModel):
@@ -127,6 +91,7 @@ async def start_call(request: Request):
     try:
         form = await request.form()
         from_ = form.get('From')
+        allowed_numbers = load_allowed_numbers()
         if from_ not in allowed_numbers:
             raise HTTPException(status_code=403, detail="Forbidden")
     except Exception: # Catch any exception during form parsing/access

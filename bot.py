@@ -31,6 +31,7 @@ from twilio.rest import Client
 from tools.web_search import search_bing
 from tools.wifi_controller import toggle_wifi
 from tools.bus_router import get_bus_route
+from common import read_location, write_location
 
 from groq import Groq
 
@@ -48,7 +49,26 @@ account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_client = Client(account_sid, auth_token)
 
+
+
+
+def set_location(address: str) -> str:
+    """
+    Set or update the user's default location (stored in location.json).
+    Used by both SMS tool-calls and voice interactions.
+    """
+    try:
+        if not isinstance(address, str) or not address.strip():
+            return "Please provide a non-empty address to save as your location."
+
+        write_location({"address": address.strip()})
+        return f"Saved your default location as: {address.strip()}."
+    except Exception as e:
+        logger.error(f"Error saving location: {e}")
+        return "Sorry, I couldn't save your location right now. Please try again."
+
 def get_tools():
+    location_address = read_location()
     return [
         {
             "type": "function",
@@ -88,18 +108,44 @@ def get_tools():
                     "properties": {
                         "origin": {
                             "type": "string",
-                            "description": "Starting location (address or 'lat,lng').",
+                            "description": (
+                                "Starting location (address or 'lat,lng'). "
+                            ),
                         },
                         "destination": {
                             "type": "string",
-                            "description": "Destination location (address or 'lat,lng').",
+                            "description": (
+                                "Destination location (address or 'lat,lng'). "
+                            ),
                         },
-                        "gtfs_feed_url": {
+                   
+                        "arrive_by": {
                             "type": "string",
-                            "description": "Optional GTFS Realtime vehicle-positions feed URL. If omitted, only Google Maps schedule data is used.",
+                            "description": "Optional arrival time in local time (e.g. '5:30 pm' or '17:30'). If provided, the route will be planned to arrive by this time instead of leaving immediately.",
                         },
                     },
                     "required": ["origin", "destination"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_location",
+                "description": (
+                    "Save or update the user's default location (e.g. '123 Main St, Ottawa, Canada'). "
+                    "Future web searches and transit routes will automatically use this as the "
+                    "user's default origin / local context where appropriate."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "description": "The human-readable address to save as the user's default location.",
+                        }
+                    },
+                    "required": ["address"],
                 },
             },
         },
@@ -139,6 +185,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
             "search_bing": search_bing,
             "toggle_wifi": toggle_wifi,
             "get_bus_route": get_bus_route,
+            "set_location": set_location,
         }
 
         used_tools = set()
@@ -234,6 +281,8 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
 
 def choose_tools(message):
+    location_address = read_location()
+    location_address_str = location_address['address'] if location_address else "unknown"
     messages = [
         {
             "role": "system",
@@ -241,6 +290,8 @@ def choose_tools(message):
                 "You are an assistant responding to an SMS message. When you need to "
                 "search for information or use a tool, call the appropriate function. "
                 "Do not wrap function calls in any tags or special formatting."
+                f"The user's home address is: {location_address_str}. Use parts of the address in the tool parameters when appropriate. For example, if the user says 'how do I get to this <address>?' then the origin should be the user's home address and the destination should be the <address>."
+                "Same for search that relates to locality as well. If the user says 'whats the weather weather now', the query should be 'weather in <city address>'."
             ),
         },
         {
@@ -278,6 +329,7 @@ def choose_tools(message):
                     "search_bing": search_bing,
                     "toggle_wifi": toggle_wifi,
                     "get_bus_route": get_bus_route,
+                    "set_location": set_location,
                 }
                 fn = available_functions.get(func_name)
                 if fn:
@@ -326,6 +378,25 @@ async def start_bus_routing(llm):
     )
 
 
+async def start_set_location(llm):
+    await llm.push_frame(
+        TextFrame("Got it, I'll save that location for you.")
+    )
+
+
+async def set_location_async(llm, args):
+    """
+    Async wrapper around set_location so it can be exposed as a Pipecat tool.
+    """
+    try:
+        address = args.get("address", "")
+        response = set_location(address)
+        return response
+    except Exception as e:
+        logger.error(f"Error in set_location_async: {e}")
+        return "Sorry, I couldn't save your location right now. Please try again."
+
+
 async def get_bus_route_async(llm, args):
     """
     Async wrapper for get_bus_route so it can be used as a Pipecat tool.
@@ -337,6 +408,7 @@ async def get_bus_route_async(llm, args):
             origin=args["origin"],
             destination=args["destination"],
             gtfs_feed_url=gtfs_feed_url,
+            arrive_by=args.get("arrive_by"),
         )
 
         return simplify_for_voice(result)
@@ -387,6 +459,11 @@ async def run_bot(websocket_client, stream_sid):
             "get_bus_route",
             get_bus_route_async,
             start_callback=start_bus_routing,
+        )
+        llm.register_function(
+            "set_location",
+            set_location_async,
+            start_callback=start_set_location,
         )
 
         tools = get_tools()

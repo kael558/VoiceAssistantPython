@@ -30,13 +30,14 @@ class BusRouter:
             "default": None,  # Will be set based on location
         }
     
-    def get_transit_directions(self, origin: str, destination: str) -> Optional[Dict]:
+    def get_transit_directions(self, origin: str, destination: str, arrive_by: Optional[str] = None) -> Optional[Dict]:
         """
         Get transit directions from Google Maps API.
         
         Args:
             origin: Starting location (address or coordinates)
             destination: Ending location (address or coordinates)
+            arrive_by: Optional arrival time in local time (e.g. "5:30 pm" or "17:30").
             
         Returns:
             Dictionary containing route information
@@ -53,10 +54,33 @@ class BusRouter:
             # Include all common transit types instead of bus-only
             # Valid values: bus, subway, train, tram, rail (pipe-separated)
             "transit_mode": "bus|subway|train|tram|rail",
-            "departure_time": "now",
             "alternatives": "true",
             "key": self.google_api_key
         }
+
+        # If arrive_by is provided, convert it to an arrival_time timestamp; otherwise use departure_time=now.
+        if arrive_by:
+            try:
+                now = datetime.now()
+                text = arrive_by.strip().lower()
+                parsed_time = None
+                for fmt in ["%H:%M", "%I:%M %p", "%I %p"]:
+                    try:
+                        parsed_time = datetime.strptime(text, fmt).time()
+                        break
+                    except ValueError:
+                        continue
+                if parsed_time is not None:
+                    target = datetime.combine(now.date(), parsed_time)
+                    if target <= now:
+                        target = target + timedelta(days=1)
+                    params["arrival_time"] = int(target.timestamp())
+                else:
+                    params["departure_time"] = "now"
+            except Exception:
+                params["departure_time"] = "now"
+        else:
+            params["departure_time"] = "now"
         
         try:
             response = requests.get(url, params=params, timeout=10)
@@ -528,7 +552,7 @@ class BusRouter:
         return "\n".join(summary)
 
 
-def get_bus_route(origin: str, destination: str, gtfs_feed_url: Optional[str] = None) -> str:
+def get_bus_route(origin: str, destination: str, gtfs_feed_url: Optional[str] = None, arrive_by: Optional[str] = None) -> str:
     """
     Main function to get bus routes with real-time vehicle position analysis.
     
@@ -550,7 +574,7 @@ def get_bus_route(origin: str, destination: str, gtfs_feed_url: Optional[str] = 
     router = BusRouter()
     
     # Get directions from Google Maps
-    directions = router.get_transit_directions(origin, destination)
+    directions = router.get_transit_directions(origin, destination, arrive_by=arrive_by)
     
     # Analyze with real-time data if available
     analysis = router.analyze_routes_with_realtime(directions, gtfs_feed_url)
