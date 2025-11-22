@@ -40,20 +40,20 @@ def search_bing(query):
 
 
 def handle_search_response(response):
-    web_descs = []
+    web_results = []
     
     # Serper returns organic results in 'organic' field
-    for result in response.get('organic', []):
-        news = {
-            'url': result.get('link'),
-            'title': result.get('title'),
-            'author': result.get('link'),
-            'desc': result.get('snippet')
-        }
-        web_descs.append(result.get('snippet', ''))
-
-    web_desc_str = "WebPage Snippet:" + "\nWebPage Snippet: ".join(web_descs[:5])
-    return web_desc_str
+    for result in response.get('organic', [])[:3]:  # Limit to top 3 results
+        title = result.get('title', '')
+        snippet = result.get('snippet', '')
+        if snippet:
+            web_results.append(f"{title}: {snippet}")
+    
+    if not web_results:
+        return "No search results found."
+    
+    # Return clean, structured data for the LLM to summarize
+    return "Search results:\n" + "\n\n".join(web_results)
 
 
 def handle_image_response(response):

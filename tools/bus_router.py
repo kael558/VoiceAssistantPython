@@ -437,7 +437,10 @@ class BusRouter:
 
             # Recommended time to leave origin for this route
             if route.get("departure_time_text"):
-                summary.append(f"   Leave at: {route['departure_time_text']}")
+                summary.append(
+                    f"   Leave your origin at: {route['departure_time_text']} "
+                    f"so you have time to walk to the first stop."
+                )
             
             if route["realtime_available"]:
                 summary.append(f"   ⏱️  Estimated Time (with real-time): {route['estimated_duration_with_realtime']} min")
@@ -485,7 +488,43 @@ class BusRouter:
                 rt = first_transit_step["realtime_data"]
                 if rt.get("stop_id"):
                     summary.append(f"   Board at stop number: {rt['stop_id']}")
-        
+
+            # Add a clear, human-readable step-by-step description for the best route.
+            summary.append("\nStep-by-step directions for the recommended route:")
+            step_index = 1
+            for step in best.get("steps", []):
+                # Transit leg
+                if step.get("vehicle_type"):
+                    line_name = step.get("line_short_name") or step.get("line_name") or "the bus"
+                    dep_stop = step.get("departure_stop") or "your nearest stop"
+                    arr_stop = step.get("arrival_stop") or "your destination stop"
+                    duration = step.get("duration") or ""
+                    num_stops = step.get("num_stops")
+                    num_stops_txt = f" over {num_stops} stops" if isinstance(num_stops, int) and num_stops > 0 else ""
+                    dep_time_txt = step.get("departure_time_text")
+
+                    if dep_time_txt:
+                        summary.append(
+                            f"  {step_index}) From {dep_stop}, take {line_name} at about {dep_time_txt} "
+                            f"towards {arr_stop}{num_stops_txt}. This ride takes about {duration}."
+                        )
+                    else:
+                        summary.append(
+                            f"  {step_index}) From {dep_stop}, take {line_name} towards {arr_stop}{num_stops_txt}. "
+                            f"This ride takes about {duration}."
+                        )
+                    step_index += 1
+                else:
+                    # Walking or other non-transit leg
+                    duration = step.get("duration") or ""
+                    distance = step.get("distance") or ""
+                    # html_instructions can be noisy; keep it simple.
+                    instruction = step.get("instruction") or "Walk to the next step."
+                    summary.append(
+                        f"  {step_index}) {instruction} This walk is about {duration} ({distance})."
+                    )
+                    step_index += 1
+
         return "\n".join(summary)
 
 

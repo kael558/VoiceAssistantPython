@@ -141,15 +141,78 @@ async def handle_tools(messages, tool_calls, from_, to_):
             "get_bus_route": get_bus_route,
         }
 
+        used_tools = set()
+
         for tool_call in tool_calls:
             function_name = tool_call.function.name
+            used_tools.add(function_name)
             function_to_call = available_functions.get(function_name, None)
             if function_to_call:
                 function_args = json.loads(tool_call.function.arguments)
                 function_response = function_to_call(**function_args)
-                messages.append({"role": "tool", "content": function_response, "tool_call_id": tool_call.id, "name": function_name})
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": function_response,
+                        "tool_call_id": tool_call.id,
+                        "name": function_name,
+                    }
+                )
 
-        messages.append({"role": "system", "content": "Summarize the tool results in a concise and informative way. Don't use markdown formatting because it will be sent as a text message."})
+        # Ask the model to act purely as a summarizer for SMS.
+        # Use different instructions depending on which tool(s) were called.
+        if "get_bus_route" in used_tools and used_tools == {"get_bus_route"}:
+            # Transit-specific, step-by-step SMS directions.
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "You are composing a single SMS with clear, step-by-step public transit directions "
+                        "based ONLY on the previous tool messages from a transit routing tool.\n"
+                        "- Start with a one-sentence overview of the trip (total travel time and general route).\n"
+                        "- Then give numbered steps that tell the user: when to leave their origin, where to walk "
+                        "to catch the first bus (name of the stop or nearby landmark), which bus or train to take "
+                        "(route number and name), where to get off, and any transfers.\n"
+                        "- Explicitly mention approximately when they should start walking to the stop and how long the "
+                        "walking and riding parts take.\n"
+                        "- Be concrete and directive, e.g., 'Leave at 5:40 pm, walk 5 minutes to St-Laurent Station, then take bus 97...'\n"
+                        "- Do NOT mention tools, snippets, or sources.\n"
+                        "- Do NOT use markdown or bullet characters like '*', just plain text with '1)', '2)', etc."
+                    ),
+                }
+            )
+        elif "search_bing" in used_tools and used_tools == {"search_bing"}:
+            # Web search -> short natural-language answer.
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "You are composing a single SMS reply for the user based ONLY on the previous web search "
+                        "tool messages.\n"
+                        "- Answer the user's original question directly in natural, conversational language.\n"
+                        "- Focus on the single most relevant answer; ignore less important snippets.\n"
+                        "- Do NOT include raw snippets, labels like 'WebPage Snippet' or 'Search results', or any URLs.\n"
+                        "- Do NOT mention tools, searching, snippets, or sources.\n"
+                        "- Do NOT use bullet points, markdown, or formatting characters.\n"
+                        "- Keep the answer short and to the point (1–3 sentences)."
+                    ),
+                }
+            )
+        else:
+            # Fallback: generic tool summarization.
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "You are composing a single SMS reply for the user based ONLY on the previous tool messages.\n"
+                        "- Summarize the results in natural, conversational language.\n"
+                        "- Do NOT include raw snippets, labels, or URLs.\n"
+                        "- Do NOT mention tools, searching, snippets, or sources.\n"
+                        "- Do NOT use bullet points, markdown, or formatting characters.\n"
+                        "- Keep the answer short and to the point (1–4 sentences)."
+                    ),
+                }
+            )
 
         second_response = client.chat.completions.create(
             messages=messages,
@@ -220,7 +283,7 @@ def choose_tools(message):
                 if fn:
                     result = fn(**func_args)
                     return str(result), None
-        print(e)
+      
         return "Tool call failed. Please try again.", None
 
 
@@ -336,6 +399,10 @@ async def run_bot(websocket_client, stream_sid):
                 "role": "system",
                 "content": """You are a helpful LLM named Lucy, in a WebRTC call. Your output will be converted to audio so don't include special characters in your answers. 
 Respond to what the user said in a creative and helpful way but you love to make witty/bad jokes. Use the tools to help you answer the user such as searching the web.
+
+When you receive search results from the web search tool, ALWAYS summarize them naturally in your own words. Never read out raw snippets or data - instead, extract the key information and present it conversationally.
+
+When you receive a transit route from the get_bus_route tool, give the user clear, step-by-step spoken directions: when to leave, where to walk to catch the bus, which bus or train to take, where to get off, any transfers, and roughly how long the trip will take overall. Make it sound like you are guiding them turn-by-turn.
 
 You will always do what the user asks without hesitation but bring in your personality.
 """,
