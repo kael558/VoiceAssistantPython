@@ -311,19 +311,8 @@ async def handle_tools(messages, tool_calls, from_, to_):
                     "content": (
                         "You are composing a single SMS with clear public transit directions "
                         "based ONLY on the previous tool messages from a transit routing tool.\n"
-                        "Follow EXACTLY this simple, newline-separated template, using only information that is clearly present "
-                        "in the tool output (do not invent stop names, numbers, or times):\n"
-                        "\n"
-                        "- Leave at <departure time from origin>\n"
-                        "- Take bus <bus number or line name> heading in <headsign or destination> direction from stop <stop name> (stop number <stop id if given>) from <intersection>, leaving at <scheduled or estimated departure time>\n"
-                        "- Get off at <arrival stop>; if the tool output clearly provides the stop just before this, add: 'The stop just before your stop is <previous stop name>'; otherwise omit this part rather than guessing\n"
-                        "- You will arrive at <approximate arrival time and total travel time>\n"
-                        "- Walking: briefly describe basic walking directions and approximate walking times to the first stop and between any transfers, in 1–3 short sentences\n"
-                        "\n"
-                        "Additional rules:\n"
-                        "- Use plain text only; keep it under 3–6 short lines as shown above.\n"
-                        "- Do NOT mention tools, searching, snippets, or sources.\n"
-                        "- Do NOT add extra commentary before or after the template; only output the lines in this format."
+                        "Please just pass on the tool output as is without any additional commentary unless the tool output is not clear (do not invent stop names, numbers, or times)."
+
                     ),
                 }
             )

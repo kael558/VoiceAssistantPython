@@ -3,6 +3,13 @@ import json
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
+
+try:
+    # Python 3.9+
+    from zoneinfo import ZoneInfo  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover - for older Python where zoneinfo isn't available
+    ZoneInfo = None  # type: ignore[assignment]
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,6 +30,57 @@ class TransitRouter:
         self.google_api_key = GOOGLE_MAPS_API_KEY
         self.transit_api_key = TRANSIT_API_KEY
         self.transit_base_url = TRANSIT_API_BASE_URL
+        # Timezone derived per-trip from the origin coordinates (if available)
+        self.timezone_id: Optional[str] = None
+        self.timezone: Optional["ZoneInfo"] = None
+
+    def _lookup_timezone_for_coords(self, lat: float, lon: float) -> Optional["ZoneInfo"]:
+        """
+        Look up the IANA timezone for a given latitude/longitude using the
+        Google Time Zone API and update self.timezone_id.
+        """
+        # If zoneinfo isn't available, fall back to naive datetimes.
+        if ZoneInfo is None:
+            return None
+
+        # Need Google API key for timezone lookup
+        if not self.google_api_key:
+            return None
+
+        try:
+            tz_url = "https://maps.googleapis.com/maps/api/timezone/json"
+            tz_params = {
+                "location": f"{lat},{lon}",
+                "timestamp": int(datetime.utcnow().timestamp()),
+                "key": self.google_api_key,
+            }
+            tz_resp = requests.get(tz_url, params=tz_params, timeout=10)
+            tz_resp.raise_for_status()
+            tz_data = tz_resp.json()
+
+            if tz_data.get("status") != "OK":
+                return None
+
+            tz_id = tz_data.get("timeZoneId")
+            if not tz_id:
+                return None
+
+            self.timezone_id = tz_id
+            return ZoneInfo(tz_id)
+        except Exception as e:
+            # Fail silently to avoid breaking the tool, but log for debugging.
+            print(f"Failed to lookup timezone for coords {lat},{lon}: {e}")
+            return None
+
+    def update_timezone_from_origin_coords(self, lat: float, lon: float) -> None:
+        """
+        Update the router's timezone based on the current trip's origin
+        coordinates. This makes the tool travel-aware instead of tied to the
+        server's local timezone.
+        """
+        tz = self._lookup_timezone_for_coords(lat, lon)
+        if tz is not None:
+            self.timezone = tz
     
     def geocode_address(self, address: str) -> Optional[Tuple[float, float]]:
         """
@@ -177,8 +235,12 @@ class TransitRouter:
             return {"error": f"Failed to get transit plan: {str(e)}"}
     
     def format_time(self, unix_timestamp: int) -> str:
-        """Format UNIX timestamp to readable time."""
-        dt = datetime.fromtimestamp(unix_timestamp)
+        """Format UNIX timestamp to readable time in the origin's local timezone."""
+        if self.timezone is not None:
+            dt = datetime.fromtimestamp(unix_timestamp, tz=self.timezone)
+        else:
+            # Fallback: use server-local time if timezone couldn't be determined
+            dt = datetime.fromtimestamp(unix_timestamp)
         return dt.strftime("%I:%M %p")
     
     def format_duration(self, seconds: int) -> str:
@@ -718,10 +780,19 @@ def get_transit_route(
     from_lat, from_lon = origin_coords
     to_lat, to_lon = dest_coords
     
+    # Update router timezone based on the current trip's origin coordinates
+    router.update_timezone_from_origin_coords(from_lat, from_lon)
+    
     # If arrive_by is supplied and arrival_time is not, convert it into a UNIX timestamp.
     if arrival_time is None and arrive_by:
         try:
-            now = datetime.now()
+            # Use the router's inferred timezone (from origin) if available,
+            # so "5:30 pm" is interpreted in the origin's local timezone, not the server's.
+            tz = router.timezone
+            if tz is not None:
+                now = datetime.now(tz=tz)
+            else:
+                now = datetime.now()
             text = arrive_by.strip().lower()
             parsed_time = None
             for fmt in ["%H:%M", "%I:%M %p", "%I %p"]:
@@ -732,6 +803,9 @@ def get_transit_route(
                     continue
             if parsed_time is not None:
                 target = datetime.combine(now.date(), parsed_time)
+                if tz is not None:
+                    # Interpret that wall-clock time in the origin timezone
+                    target = target.replace(tzinfo=tz)
                 if target <= now:
                     target = target + timedelta(days=1)
                 arrival_time = int(target.timestamp())
