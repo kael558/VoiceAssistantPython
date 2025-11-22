@@ -279,7 +279,6 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
         used_tools = set()
 
-        print(tool_calls)
 
         for tool_call in tool_calls:
             function_name = tool_call.function.name
@@ -287,8 +286,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
             function_to_call = available_functions.get(function_name, None)
             if function_to_call:
                 function_args = json.loads(tool_call.function.arguments)
-                print(function_name)
-                print(function_args)
+
                 function_response = function_to_call(**function_args)
                 messages.append(
                     {
@@ -298,8 +296,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
                         "name": function_name,
                     }
                 )
-                print(function_response)
-                print("--------------------------------")
+    
 
         # Ask the model to act purely as a summarizer for SMS.
         # Use different instructions depending on which tool(s) were called.

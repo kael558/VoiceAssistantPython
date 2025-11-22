@@ -295,7 +295,7 @@ class TransitRouter:
 
         summary = []
         summary.append("🚌 Transit plan (recommended route)\n")
-        summary.append("=" * 70)
+        summary.append("=" * 20)
 
         # 1) When to leave home, based on LIVE time for the first bus
         # Find the first/last transit legs and any walking leg before it
