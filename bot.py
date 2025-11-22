@@ -6,6 +6,7 @@
 import json
 import os
 import sys
+import time
 
 import aiohttp
 from dotenv import load_dotenv
@@ -66,6 +67,15 @@ def set_location(address: str) -> str:
     except Exception as e:
         logger.error(f"Error saving location: {e}")
         return "Sorry, I couldn't save your location right now. Please try again."
+def chunk_message(text: str, max_len: int = 1600) -> list[str]:
+    """
+    Naively split text into chunks of at most `max_len` characters.
+    This does NOT try to preserve whole words; it just slices the string.
+    """
+    if not text:
+        return []
+
+    return [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
 def get_tools():
     location_address = read_location()
@@ -265,18 +275,29 @@ async def handle_tools(messages, tool_calls, from_, to_):
             messages=messages,
             model="llama-3.3-70b-versatile"
         )
-        twilio_client.messages.create(
-            body=second_response.choices[0].message.content,
-            from_=to_,
-            to=from_
-        )
+        full_body = second_response.choices[0].message.content
+        parts = chunk_message(full_body, 1600)
+        for i, part in enumerate(parts):
+            # Add a small delay between messages to avoid spamming
+            if i > 0:
+                time.sleep(1)
+            twilio_client.messages.create(
+                body=part,
+                from_=to_,
+                to=from_
+            )
     except Exception as e:
         logger.error(f"Error: {e}")
-        twilio_client.messages.create(
-            body=f"An error occurred {e}",
-            from_=to_,
-            to=from_
-        )
+        error_body = f"An error occurred {e}"
+        error_parts = chunk_message(error_body, 1600)
+        for i, part in enumerate(error_parts):
+            if i > 0:
+                time.sleep(1)
+            twilio_client.messages.create(
+                body=part,
+                from_=to_,
+                to=from_
+            )
 
 
 
