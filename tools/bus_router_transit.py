@@ -164,9 +164,7 @@ class TransitRouter:
         }
         
         try:
-            print(url)
-            print(params)
-            print(headers)
+
 
             response = requests.get(url, params=params, headers=headers, timeout=15)
             response.raise_for_status()
@@ -238,12 +236,14 @@ class TransitRouter:
         summary.append("=" * 70)
 
         # 1) When to leave home, based on LIVE time for the first bus
-        # Find the first transit leg and any walking leg before it
+        # Find the first/last transit legs and any walking leg before it
         first_transit_idx = None
+        last_transit_idx = None
         for i, leg in enumerate(legs):
             if leg.get("leg_mode") == "transit":
-                first_transit_idx = i
-                break
+                if first_transit_idx is None:
+                    first_transit_idx = i
+                last_transit_idx = i
 
         leave_time_unix: Optional[int] = None
         walk_to_first_stop_duration = 0
@@ -329,11 +329,52 @@ class TransitRouter:
                 f"for {service_label}."
             )
 
-        # 2–4) Details for each transit leg: bus number + destination, stops, wait times
-        summary.append("\n• Transit legs:")
+        # 2–4) Sequential trip steps (walking + transit) as a simple numbered list
+        summary.append("\n• Trip steps:")
+        step_index = 1
 
         for idx, leg in enumerate(legs):
-            if leg.get("leg_mode") != "transit":
+            leg_mode = leg.get("leg_mode")
+
+            # Walking segments
+            if leg_mode == "walk":
+                distance_m = int(leg.get("distance") or 0)
+                duration_sec = int(leg.get("duration") or 0)
+                distance_txt = self.format_distance(distance_m) if distance_m > 0 else ""
+                duration_txt = self.format_duration(duration_sec) if duration_sec > 0 else ""
+
+                directions = leg.get("directions") or []
+
+                # Collect all simple walking instructions within this leg
+                walk_chunks: List[str] = []
+                for step in directions:
+                    instr = (step.get("instruction") or "").strip()
+                    if instr:
+                        walk_chunks.append(instr)
+
+                if not walk_chunks:
+                    walk_text = "Walk to the next stop"
+                else:
+                    # Join sub-directions into a compact phrase
+                    walk_text = ", ".join(walk_chunks)
+
+                extra_bits = []
+                if distance_txt:
+                    extra_bits.append(distance_txt)
+                if duration_txt:
+                    extra_bits.append(duration_txt)
+
+                if extra_bits:
+                    summary.append(f"  {step_index}. {walk_text} (~{', '.join(extra_bits)}).")
+                else:
+                    summary.append(f"  {step_index}. {walk_text}.")
+
+                step_index += 1
+
+                continue
+
+            # Transit segments
+            if leg_mode != "transit":
                 continue
 
             routes = leg.get("routes", [])
@@ -447,18 +488,27 @@ class TransitRouter:
 
             dep_time_str = self.format_time(dep_time_live) if dep_time_live else "unknown time"
 
-            summary.append(f"\n   - Take {service_label}")
-            summary.append(f"     • Board at {dep_display} at {dep_time_str} (wait ~{wait_str})")
-            summary.append(f"     • Get off at {arr_display}")
-            if prev_arr_display != "Unknown stop":
-                summary.append(f"       • Stop just before your stop: {prev_arr_display}")
-
-        # 5) Total duration of the trip
-        summary.append("\n• Total trip duration: " + self.format_duration(duration))
-        if start_time and end_time:
+            # First numbered step for this transit leg: boarding
             summary.append(
-                f"  (from {self.format_time(start_time)} to {self.format_time(end_time)})"
+                f"  {step_index}. Take {service_label} from {dep_display} "
+                f"at {dep_time_str} (wait ~{wait_str})."
             )
+            step_index += 1
+
+            # Second numbered step: getting off
+            line = f"  {step_index}. Get off at {arr_display}"
+            if prev_arr_display != "Unknown stop":
+                line += f". Previous stop is {prev_arr_display}"
+            line += "."
+            summary.append(line)
+            step_index += 1
+
+ 
+        if start_time and end_time:
+       
+
+            # Also add a clear "Arrive by" line using the trip end time
+            summary.append(f"Arrive by {self.format_time(end_time)}")
 
         return "\n".join(summary)
     

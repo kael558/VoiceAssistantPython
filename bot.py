@@ -31,7 +31,7 @@ from twilio.rest import Client
 
 from tools.web_search import search_bing
 from tools.wifi_controller import toggle_wifi
-from tools.bus_router import get_bus_route
+from tools.bus_router_transit import get_transit_route
 from common import read_location, write_location
 
 from groq import Groq
@@ -111,7 +111,7 @@ def get_tools():
         {
             "type": "function",
             "function": {
-                "name": "get_bus_route",
+                "name": "get_transit_route",
                 "description": "Find the best public transit route (bus/train/metro) between two locations. Uses Google Maps and optional real-time vehicle positions to recommend the fastest route and when to leave.",
                 "parameters": {
                     "type": "object",
@@ -194,7 +194,7 @@ async def handle_tools(messages, tool_calls, from_, to_):
         available_functions = {
             "search_bing": search_bing,
             "toggle_wifi": toggle_wifi,
-            "get_bus_route": get_bus_route,
+            "get_transit_route": get_transit_route,
             "set_location": set_location,
         }
 
@@ -218,23 +218,27 @@ async def handle_tools(messages, tool_calls, from_, to_):
 
         # Ask the model to act purely as a summarizer for SMS.
         # Use different instructions depending on which tool(s) were called.
-        if "get_bus_route" in used_tools and used_tools == {"get_bus_route"}:
-            # Transit-specific, step-by-step SMS directions.
+        if "get_transit_route" in used_tools and used_tools == {"get_transit_route"}:
+            # Transit-specific, SMS directions in a fixed simple, newline-separated template.
             messages.append(
                 {
                     "role": "system",
                     "content": (
-                        "You are composing a single SMS with clear, step-by-step public transit directions "
+                        "You are composing a single SMS with clear public transit directions "
                         "based ONLY on the previous tool messages from a transit routing tool.\n"
-                        "- Start with a one-sentence overview of the trip (total travel time and general route).\n"
-                        "- Then give numbered steps that tell the user: when to leave their origin, where to walk "
-                        "to catch the first bus (name of the stop or nearby landmark), which bus or train to take "
-                        "(route number and name), where to get off, and any transfers.\n"
-                        "- Explicitly mention approximately when they should start walking to the stop and how long the "
-                        "walking and riding parts take.\n"
-                        "- Be concrete and directive, e.g., 'Leave at 5:40 pm, walk 5 minutes to St-Laurent Station, then take bus 97...'\n"
-                        "- Do NOT mention tools, snippets, or sources.\n"
-                        "- Do NOT use markdown or bullet characters like '*', just plain text with '1)', '2)', etc."
+                        "Follow EXACTLY this simple, newline-separated template, using only information that is clearly present "
+                        "in the tool output (do not invent stop names, numbers, or times):\n"
+                        "\n"
+                        "- Leave at <departure time from origin>\n"
+                        "- Take bus <bus number or line name> heading in <headsign or destination> direction from stop <stop name> (stop number <stop id if given>) from <intersection>, leaving at <scheduled or estimated departure time>\n"
+                        "- Get off at <arrival stop>; if the tool output clearly provides the stop just before this, add: 'The stop just before your stop is <previous stop name>'; otherwise omit this part rather than guessing\n"
+                        "- You will arrive at <approximate arrival time and total travel time>\n"
+                        "- Walking: briefly describe basic walking directions and approximate walking times to the first stop and between any transfers, in 1–3 short sentences\n"
+                        "\n"
+                        "Additional rules:\n"
+                        "- Use plain text only; keep it under 3–6 short lines as shown above.\n"
+                        "- Do NOT mention tools, searching, snippets, or sources.\n"
+                        "- Do NOT add extra commentary before or after the template; only output the lines in this format."
                     ),
                 }
             )
@@ -321,9 +325,6 @@ def choose_tools(message):
         }
     ]
 
-    print(location_address)
-    
-
     tools = get_tools()
 
 
@@ -351,7 +352,7 @@ def choose_tools(message):
                 available_functions = {
                     "search_bing": search_bing,
                     "toggle_wifi": toggle_wifi,
-                    "get_bus_route": get_bus_route,
+                    "get_transit_route": get_transit_route,
                     "set_location": set_location,
                 }
                 fn = available_functions.get(func_name)
@@ -420,14 +421,14 @@ async def set_location_async(llm, args):
         return "Sorry, I couldn't save your location right now. Please try again."
 
 
-async def get_bus_route_async(llm, args):
+async def get_transit_route_async(llm, args):
     """
-    Async wrapper for get_bus_route so it can be used as a Pipecat tool.
+    Async wrapper for get_transit_route so it can be used as a Pipecat tool.
     """
     try:
         gtfs_feed_url = args.get("gtfs_feed_url") or os.getenv("GTFS_FEED_URL")
 
-        result = get_bus_route(
+        result = get_transit_route(
             origin=args["origin"],
             destination=args["destination"],
             gtfs_feed_url=gtfs_feed_url,
@@ -479,8 +480,8 @@ async def run_bot(websocket_client, stream_sid):
             search,
             start_callback=start_search)
         llm.register_function(
-            "get_bus_route",
-            get_bus_route_async,
+            "get_transit_route",
+            get_transit_route_async,
             start_callback=start_bus_routing,
         )
         llm.register_function(
@@ -502,7 +503,7 @@ Respond to what the user said in a creative and helpful way but you love to make
 
 When you receive search results from the web search tool, ALWAYS summarize them naturally in your own words. Never read out raw snippets or data - instead, extract the key information and present it conversationally.
 
-When you receive a transit route from the get_bus_route tool, give the user clear, step-by-step spoken directions: when to leave, where to walk to catch the bus, which bus or train to take, where to get off, any transfers, and roughly how long the trip will take overall. Make it sound like you are guiding them turn-by-turn.
+When you receive a transit route from the get_transit_route tool, give the user clear, step-by-step spoken directions: when to leave, where to walk to catch the bus, which bus or train to take, where to get off, any transfers, and roughly how long the trip will take overall. Make it sound like you are guiding them turn-by-turn.
 
 You will always do what the user asks without hesitation but bring in your personality.
 """,
