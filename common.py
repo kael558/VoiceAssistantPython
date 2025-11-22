@@ -5,7 +5,9 @@ from typing import List
 from tools.wifi_controller import toggle_wifi  # Assuming tools.wifi_controller exists and has toggle_wifi
 
 # Define the base directory for all data files
-BASE_DIR = "./data"
+# Get the current directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.join(current_dir, "data")
 
 # Ensure the base directory exists
 os.makedirs(BASE_DIR, exist_ok=True)
@@ -92,12 +94,12 @@ def write_location(location):
     Persist the user's default location to location.json.
 
     `location` can be a plain string address or a dict. The stored structure is:
-      {"address": "<string>", "updated_at": "<ISO8601 UTC>"}
+      {"location": "<string>", "updated_at": "<ISO8601 UTC>"}
     If a dict is provided, its keys are merged over this base structure.
     """
     try:
         if isinstance(location, str):
-            data = {"address": location}
+            data = {"location": location}
         elif isinstance(location, dict):
             data = dict(location)
         else:
@@ -124,7 +126,7 @@ def read_location():
             data = json.load(f)
         return data.get("location", "Unknown")
     except FileNotFoundError:
-        # No location set yet
+        print(f"File not found in {LOCATION_FILE}")
         return "Unknown"
     except json.JSONDecodeError as e:
         print(f"JSON decode error in {LOCATION_FILE}: {e}")
