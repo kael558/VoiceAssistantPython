@@ -194,8 +194,7 @@ def choose_tools(message):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            tools=tools,
-            disable_tool_validation=True,
+            tools=tools
         )
         
         response_message = response.choices[0].message
