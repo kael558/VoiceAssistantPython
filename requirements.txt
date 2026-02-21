@@ -9,3 +9,7 @@ aiohttp~=3.9.5
 groq~=0.36.0
 starlette~=0.37.2
 gtfs-realtime-bindings~=1.0.0
+serpapi
+firecrawl-py
+playwright
+apscheduler
